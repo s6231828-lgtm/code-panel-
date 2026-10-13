@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Aura Ads</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;800;900&display=swap" rel="stylesheet" />
+
+<style>
+*{
+  box-sizing:border-box;
+  margin:0;
+  padding:0;
+}
+
+html,body{
+  height:100%;
+}
+
+body{
+  font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;
+  background:
+    radial-gradient(circle at top, #1d4ed8 0%, #0f172a 45%, #020617 100%);
+  color:#fff;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:24px;
+  overflow:hidden;
+}
+
+.screen{
+  width:min(100%,420px);
+  text-align:center;
+}
+
+.code{
+  font-size:clamp(48px, 14vw, 76px);
+  font-weight:900;
+  letter-spacing:12px;
+  line-height:1;
+  min-height:90px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-shadow:0 0 28px rgba(59,130,246,.45);
+  user-select:none;
+}
+
+.copy-btn{
+  margin-top:34px;
+  width:100%;
+  max-width:260px;
+  padding:15px 22px;
+  border:none;
+  border-radius:16px;
+  background:linear-gradient(135deg,#3b82f6,#8b5cf6);
+  color:#fff;
+  font-size:16px;
+  font-weight:900;
+  letter-spacing:.02em;
+  cursor:pointer;
+  box-shadow:0 16px 40px rgba(59,130,246,.28);
+  transition:.18s ease;
+}
+
+.copy-btn:hover:not(:disabled){
+  transform:translateY(-1px);
+  filter:brightness(1.06);
+}
+
+.copy-btn:active:not(:disabled){
+  transform:translateY(1px) scale(.99);
+}
+
+.copy-btn:disabled{
+  opacity:.42;
+  cursor:not-allowed;
+  box-shadow:none;
+}
+</style>
+</head>
+
+<body>
+
+<div class="screen">
+  <div id="code" class="code">• • • • •</div>
+  <button id="copyBtn" class="copy-btn" type="button" disabled>Copy Code</button>
+</div>
+
+<script>
+/* ============================================================
+   SAME HIDDEN CODE SYSTEM — user.html se match karna chahiye
+   ============================================================ */
+const SECRET_CODES = [
+  "84729","59318","72641","91837","46285","83517","27496","68143","95721","31487",
+  "78652","42916","86394","57128","69247","14863","92574","36719","81426","53982",
+  "27185","74639","98214","43567","61793","85326","19475","72853","46921","31568",
+  "89742","54279","16384","97136","68429","25713","83641","49275","71592","34861",
+  "92618","57349","18267","64931","83725","29468","76184","45392","91864","32675",
+  "58413","87296","13579","96428"
+];
+
+const VERIFY_CODE_SECRET = "aura_ads_hidden_pattern_x91m27z4";
+const CODE_ROTATION_MS = 4 * 60 * 60 * 1000;
+
+/* In keys ko user.html ke saath same rakho */
+const ACTIVE_SESSION_KEY = "aura_ads_active_session_v7";
+const DEVICE_ID_KEY = "aura_ads_device_id_v7";
+
+/* ============================================================
+   HASH / DEVICE helpers
+   ============================================================ */
+function fnv1a(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+function mixedHash(a, b) {
+  return (fnv1a(`${a}|${b}`) ^ fnv1a(`${b}#${a}`)) >>> 0;
+}
+
+function getDeviceId() {
+  try {
+    let id = localStorage.getItem(DEVICE_ID_KEY);
+    if (id) return id;
+
+    const raw = [
+      navigator.userAgent || "",
+      navigator.language || "",
+      screen.width + "x" + screen.height,
+      screen.colorDepth || "",
+      Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+      new Date().getTimezoneOffset()
+    ].join("|");
+
+    id = "dev_" + fnv1a(raw).toString(16) + "_" + Math.random().toString(36).slice(2, 10);
+    localStorage.setItem(DEVICE_ID_KEY, id);
+    return id;
+  } catch {
+    return "dev_fallback_" + Math.random().toString(36).slice(2, 10);
+  }
+}
+
+function getCodeSlot(at = Date.now()) {
+  return Math.floor(Number(at) / CODE_ROTATION_MS);
+}
+
+function getCodeForSlot(dev, slot) {
+  const idx = mixedHash(String(dev), `${VERIFY_CODE_SECRET}:slot:${slot}`) % SECRET_CODES.length;
+  return SECRET_CODES[idx];
+}
+
+function readSession() {
+  try {
+    const raw = localStorage.getItem(ACTIVE_SESSION_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+/* ============================================================
+   UI
+   ============================================================ */
+const codeEl = document.getElementById("code");
+const copyBtn = document.getElementById("copyBtn");
+
+let currentCode = "";
+let flashing = false;
+
+function syncDeviceFromSession(session) {
+  if (session && session.deviceId) {
+    try {
+      localStorage.setItem(DEVICE_ID_KEY, session.deviceId);
+    } catch {}
+    return session.deviceId;
+  }
+  return getDeviceId();
+}
+
+function setLocked() {
+  currentCode = "";
+  codeEl.textContent = "• • • • •";
+  if (!flashing) copyBtn.disabled = true;
+}
+
+function setUnlocked(code) {
+  currentCode = String(code || "");
+  codeEl.textContent = currentCode;
+  if (!flashing) copyBtn.disabled = !/^\d{5}$/.test(currentCode);
+}
+
+function render() {
+  const now = Date.now();
+  const s = readSession();
+
+  if (!s) {
+    setLocked();
+    return;
+  }
+
+  const deviceId = syncDeviceFromSession(s);
+
+  if (s.status !== "open") {
+    setLocked();
+    return;
+  }
+
+  if (Number(s.failedAttempts || 0) >= 5) {
+    setLocked();
+    return;
+  }
+
+  const expiresAt = Number(s.expiresAt || 0);
+  if (!expiresAt || now > expiresAt) {
+    setLocked();
+    return;
+  }
+
+  const started = Number(s.startedAt || s.createdAt || 0);
+  const minWatch = Number(s.minWatchMs || 15000);
+  const elapsed = now - started;
+
+  if (elapsed < minWatch) {
+    setLocked();
+    return;
+  }
+
+  const evidence = Boolean(
+    s.awaitingReturn ||
+    s.sawHidden ||
+    s.hadBlur ||
+    s.returned ||
+    s.sameTabReturned
+  );
+
+  if (!evidence) {
+    setLocked();
+    return;
+  }
+
+  const slot = Number(s.slot ?? getCodeSlot(started || now));
+  const code = getCodeForSlot(deviceId, slot);
+
+  setUnlocked(code);
+}
+
+function flashButton(text) {
+  flashing = true;
+  copyBtn.textContent = text;
+  copyBtn.disabled = true;
+
+  setTimeout(() => {
+    flashing = false;
+    copyBtn.textContent = "Copy Code";
+    copyBtn.disabled = !/^\d{5}$/.test(currentCode);
+  }, 1200);
+}
+
+async function copyCode() {
+  if (!/^\d{5}$/.test(currentCode)) return;
+
+  try {
+    await navigator.clipboard.writeText(currentCode);
+    flashButton("Copied!");
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = currentCode;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "absolute";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+
+    try {
+      document.execCommand("copy");
+      flashButton("Copied!");
+    } catch {
+      flashButton("Failed");
+    }
+
+    ta.remove();
+  }
+}
+
+copyBtn.addEventListener("click", copyCode);
+
+render();
+setInterval(render, 1000);
+</script>
+
+</body>
+</html>
